@@ -1,9 +1,22 @@
+4747
 from django.db import models
 from django.contrib.auth.models import AbstractUser, BaseUserManager, Group, Permission
 from django.core.validators import RegexValidator
 
 
 # Create your models here.
+
+class Review(models.Model):
+    trail_name = models.CharField(max_length=255)
+    text = models.CharField(max_length=255)
+    user = models.CharField(max_length=255)
+    
+class Favorite(models.Model):
+    trail_name = models.CharField(max_length=255)
+    user = models.CharField(max_length=255)
+
+    def __str__(self):
+        return self.user
 
 class Transfer(models.Model):
     amount = models.FloatField()
@@ -68,6 +81,8 @@ class UserManager(BaseUserManager):
 
 class UserData(AbstractUser):
     username = None
+    favorites = models.ManyToManyField(Favorite)
+    reviews = models.ManyToManyField(Review)
     name = models.CharField(max_length=100, unique=True)
     email = models.EmailField(max_length=100, unique=True)
     date_joined = models.DateTimeField(auto_now_add=True)

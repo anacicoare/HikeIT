@@ -23,6 +23,9 @@ from proj_backend.views import MyTokenObtainPairView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("api/see_favorites/", views.SeeFavoritesView.as_view(), name="see_favorites"),
+    path("api/add_to_favorites/", views.AddToFavoritesView.as_view(), name="add_to_favorites"),
+    path("api/leave_review/", views.LeaveReviewView.as_view(), name="leave_review"),
     path("api/register/", views.RegisterView.as_view(), name="register"),
     path('api/test/', views.Test.as_view(), name='test'),
     path('api/login/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
@@ -39,5 +42,7 @@ urlpatterns = [
     path('api/update_iban_balance/', views.UpdateIbanBalance.as_view(), name='update_iban_balance'),
     path('api/update_loan/', views.UpdateLoan.as_view(), name='update_loan'),
     path('api/get_all_loans/', views.GetAllLoans.as_view(), name='get_all_loans'),
+    path('api/get_all_reviews/', views.GetAllReviews.as_view(), name='get_all_reviews'),
+    path('api/get_all_reviews_for_trail/', views.GetAllReviewsForTrail.as_view(), name='get_all_reviews_for_trail'),
 ]
 

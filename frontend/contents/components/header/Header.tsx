@@ -14,6 +14,10 @@ export default function Header() {
 
     useEffect(() => {
         console.log("profile", profile);
+
+        if (pathname === '/' && profile?.profile?.email) {
+            router.push('/map')
+        }
     }, []);
 
   return (

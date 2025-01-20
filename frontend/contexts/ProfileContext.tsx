@@ -12,6 +12,7 @@ type ProfileContextProps = {
     login: (data: any) => void;
     register: (data: any) => void;
     logout: () => void;
+    isLoading: boolean;
 };
 
 export const ProfileContext = createContext<ProfileContextProps>({
@@ -21,35 +22,77 @@ export const ProfileContext = createContext<ProfileContextProps>({
     login: () => { },
     register: () => { },
     logout: () => { },
+    isLoading: true,
 });
+
+const PUBLIC_ROUTES = ['/login', '/register', '/'];
+const ADMIN_ROUTES = ['/admin'];
+const USER_ROUTES = ['/map', '/reviews', '/profile'];
 
 export const ProfileProvider = ({ children }: any) => {
     const [authorized, setAuthorized] = useState(false);
     const [profile, setProfile] = useState({});
     const [violationData, setViolationData] = useState<any>(null);
-    const router = useRouter()
+    const [isLoading, setIsLoading] = useState(true);
+    const router = useRouter();
 
     useEffect(() => {
         getUserProfile();
-    }, [])
+    }, []);
 
-    /**
-     * When load page, check cookies to see if user is logged in
-     */
-    const getUserProfile = () => {
-        const profile: any = localStorage.getItem('profile');
-        let decodedData = {} as any;
-        //Case not authenticated
-        if (!profile) {
-            setAuthorized(false)
-        } else {
-            //Case have accessToken
-            try {
-                decodedData = jwtDecode(profile);
-            } catch (error: any) {
-                console.error("Invalid token data");
+    useEffect(() => {
+        const handleRouteProtection = async () => {
+            const currentPath = router.pathname;
+            const profile = localStorage.getItem('profile');
+            
+            // Don't process anything while initial authentication check is happening
+            if (isLoading) return;
+
+            // If user is logged in and tries to access index page, redirect to map
+            if (profile && currentPath === '/') {
+                router.push('/map');
+                return;
             }
 
+            // If user is not logged in and tries to access protected route
+            if (!profile && !PUBLIC_ROUTES.includes(currentPath)) {
+                router.push('/login');
+                return;
+            }
+
+            // If user is logged in, handle route access based on user type
+            if (profile) {
+                const decodedData = jwtDecode(profile) as any;
+                const userType = decodedData?.type;
+
+                if (userType === 'admin' && !ADMIN_ROUTES.includes(currentPath) && !PUBLIC_ROUTES.includes(currentPath)) {
+                    router.push('/admin');
+                    return;
+                }
+
+                if (userType === 'normal' && !USER_ROUTES.includes(currentPath) && !PUBLIC_ROUTES.includes(currentPath)) {
+                    router.push('/map');
+                    return;
+                }
+            }
+        };
+
+        handleRouteProtection();
+    }, [router.pathname, isLoading]);
+
+    const getUserProfile = () => {
+        setIsLoading(true);
+        const profile: any = localStorage.getItem('profile');
+        let decodedData = {} as any;
+        
+        if (!profile) {
+            setAuthorized(false);
+            setIsLoading(false);
+            return;
+        }
+
+        try {
+            decodedData = jwtDecode(profile);
             if (decodedData && decodedData.email) {
                 setProfile({
                     email: decodedData.email,
@@ -57,54 +100,44 @@ export const ProfileProvider = ({ children }: any) => {
                     user_type: decodedData.user_type,
                 });
                 setAuthorized(true);
-                console.log("decodedData", decodedData);
-
-                if(decodedData?.type === 'admin') {
-                    router.push('/admin');
-                }
             } else {
-                // Handle case where decoded data is not as expected
                 setAuthorized(false);
                 setProfile({});
                 console.error("Invalid token data");
             }
+        } catch (error: any) {
+            console.error("Invalid token data");
+            setAuthorized(false);
+            setProfile({});
+        } finally {
+            setIsLoading(false);
         }
-    }
+    };
 
-    const login = (data: any) => {
-        // Call api login
-        console.log("call api login...");
-        AuthServices.callApiLogin(data).then((response: any) => {
-            if (response && response?.data) {
-                const dataResponse = response?.data;
-                //If the authentication succeeds, update the state with the user's profile
-                let decodedData = {} as any;
-                if(dataResponse?.access) {
-                    decodedData = jwtDecode(dataResponse?.access);
-                }
+    const login = async (data: any) => {
+        setIsLoading(true);
+        try {
+            const response = await AuthServices.callApiLogin(data);
+            if (response?.data?.access) {
+                const decodedData = jwtDecode(response.data.access) as any;
                 setProfile({
                     email: decodedData?.email,
                     name: decodedData?.name,
                     user_type: decodedData?.type,
-                })
+                });
                 setAuthorized(true);
-                localStorage.setItem('profile', dataResponse?.access);
+                localStorage.setItem('profile', response.data.access);
 
-                if(decodedData?.type === 'normal') {
-                    router.push('/favorite');
+                if (decodedData?.type === 'normal') {
+                    router.push('/map');
                 } else {
                     router.push('/admin');
                 }
-
-                console.log("decodedData", decodedData);
             } else {
-                console.log("login failed");
                 setAuthorized(false);
             }
-        }).catch((error: any) => {
+        } catch (error: any) {
             if (error?.response?.status === 400) {
-                console.log("login failed because");
-                console.log(error?.response?.data);
                 notifications.show({
                     title: 'Error',
                     message: 'Email sau parola incorecte',
@@ -114,10 +147,8 @@ export const ProfileProvider = ({ children }: any) => {
                         root: {
                             backgroundColor: theme.colors.red[6],
                             borderColor: theme.colors.red[6],
-
                             '&::before': { backgroundColor: theme.white },
                         },
-
                         title: { color: theme.white },
                         description: { color: theme.white },
                         closeButton: {
@@ -125,31 +156,25 @@ export const ProfileProvider = ({ children }: any) => {
                             '&:hover': { backgroundColor: theme.colors.blue[7] },
                         },
                     }),
-                })
-            } else {
-                console.error(error);
+                });
             }
-        })
-
+            console.error(error);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
-    const register = (data: any) => {
-        // Call api login
-        console.log("call api register...");
-        AuthServices.callApiRegister(data).then((response: any) => {
-            if (response && response?.data) {
-                const dataResponse = response?.data;
-
-                console.log("register success");
-                router?.push('/login');
+    const register = async (data: any) => {
+        setIsLoading(true);
+        try {
+            const response = await AuthServices.callApiRegister(data);
+            if (response?.data) {
+                router.push('/login');
             } else {
-                console.log("register failed");
                 setAuthorized(false);
             }
-        }).catch((error: any) => {
+        } catch (error: any) {
             if (error?.response?.status === 400) {
-                console.log("register failed because");
-                console.log(error?.response?.data);
                 notifications.show({
                     title: 'Error',
                     message: error?.response?.data,
@@ -159,10 +184,8 @@ export const ProfileProvider = ({ children }: any) => {
                         root: {
                             backgroundColor: theme.colors.red[6],
                             borderColor: theme.colors.red[6],
-
                             '&::before': { backgroundColor: theme.white },
                         },
-
                         title: { color: theme.white },
                         description: { color: theme.white },
                         closeButton: {
@@ -170,33 +193,38 @@ export const ProfileProvider = ({ children }: any) => {
                             '&:hover': { backgroundColor: theme.colors.blue[7] },
                         },
                     }),
-                })
-            } else {
-                console.error(error);
+                });
             }
-        })
-
+            console.error(error);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     const logout = () => {
-        //Set authorization false
         setAuthorized(false);
         setProfile({});
-        //Remove accessToken and refreshToken from localStorage/Cookies
         localStorage.removeItem('profile');
         Cookies.remove('refreshToken');
-
-        setProfile({
-            email: "",
-            name: "",
-            user_type: "",
-        })
-        //Redirect to login page
-        router.push(`/`)
+        router.push('/');
     };
+
+    if (isLoading) {
+        return <div className="flex items-center justify-center min-h-screen">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>;
+    }
     
     return (
-        <ProfileContext.Provider value={{ authorized, profile, login, register, logout, violationData}}>
+        <ProfileContext.Provider value={{ 
+            authorized, 
+            profile, 
+            login, 
+            register, 
+            logout, 
+            violationData, 
+            isLoading 
+        }}>
             {children}
         </ProfileContext.Provider>
     );

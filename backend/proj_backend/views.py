@@ -9,8 +9,70 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 
 from proj_backend.serializers import LoanSerializer, MyTokenObtainPairSerializer, UserSerializer, CardSerializer
 
-from proj_backend.models import Card, Transfer, UserData, Loan
+from proj_backend.models import Card, Transfer, UserData, Loan, Review, Favorite
 
+
+class LeaveReviewView(APIView):
+    def post(self, request):
+        trail_name = request.data.get("trailName")
+        review_text = request.data.get("reviewText")
+        user_email = request.data.get("userEmail")
+
+        review = Review(trail_name=trail_name, text=review_text, user=user_email)
+        review.save()
+
+        user = UserData.objects.get(email=user_email)
+        user.reviews.add(review)
+        user.save()
+
+        return Response(data={"Review saved"}, status=200)
+    
+class AddToFavoritesView(APIView):
+    def post(self, request):
+        trail_name = request.data.get("trailName")
+        user_email = request.data.get("userEmail")
+
+        # Check if the trail is already in the user's favorites
+        favorite_trail = Favorite.objects.filter(trail_name=trail_name, user=user_email).first()
+
+        if favorite_trail:
+            # If it exists, remove it (unfavorite)
+            favorite_trail.delete()
+            return Response(data={"message": "Trail removed from Favorites"}, status=200)
+        else:
+            # Otherwise, add it to favorites
+            favorite_trail = Favorite(trail_name=trail_name, user=user_email)
+            favorite_trail.save()
+
+            user = UserData.objects.get(email=user_email)
+            user.favorites.add(favorite_trail)
+            user.save()
+
+            return Response(data={"message": "Trail added to Favorites"}, status=200)
+
+    
+class SeeFavoritesView(APIView):
+    def post(self, request):
+        response_data = []
+
+        user_email = request.data.get("userEmail")
+        print(request.data)
+
+        if not user_email:
+            return Response({"error": "User email is required."}, status=400)
+
+        # Fetch all favorites that match the provided userEmail
+        favorites = Favorite.objects.filter(user=user_email)
+
+        # Assuming Favorite model has fields that you want to return, e.g., trailName
+        response_data = [
+            {"trailName": favorite.trail_name}
+            for favorite in favorites
+        ]
+
+        
+        
+        return Response(response_data, status=200)
 
 class Test(APIView):
     def get(self, request):
@@ -250,8 +312,38 @@ class UpdateLoan(APIView):
 class GetAllLoans(APIView):
     def get(self, request):
         email = request.GET.get('email')
-        print(email)
         user = UserData.objects.get(email=email)
         loans = Loan.objects.filter(user=user.name, amount__gt=0)
         loans_data = [LoanSerializer(loan).data for loan in loans]
         return Response(data={"loans": loans_data}, status=200)
+    
+class GetAllReviews(APIView):
+    def get(self, request):
+        user_email = request.GET.get('email')
+        print(user_email)
+        
+        # Get all reviews for the user
+        reviews = Review.objects.filter(user=user_email)
+        
+        # Get all favorited trails for the user
+        favorite_trails = Favorite.objects.filter(user=user_email).values_list('trail_name', flat=True)
+        
+        # Construct response with favorite status
+        reviews_data = [
+            {
+                "trail_name": review.trail_name,
+                "text": review.text,
+                "is_favorited": "Da" if review.trail_name in favorite_trails else "Nu"   # Check if the trail is favorited
+            }
+            for review in reviews
+        ]
+        
+        return Response(data={"reviews": reviews_data}, status=200)
+
+    
+class GetAllReviewsForTrail(APIView):
+    def get(self, request):
+        trail_name = request.GET.get('trail_name')
+        reviews = Review.objects.filter(trail_name=trail_name)
+        reviews_data = [{"user": review.user, "text": review.text} for review in reviews]
+        return Response(data={"reviews": reviews_data}, status=200)
